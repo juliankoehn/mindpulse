@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider        = "prisma-client-js"
+    previewFeatures = []
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id            String       @id @unique
+    username      String?
+    name          String?
+    emailVerified DateTime?
+    email         String       @unique
+    timeZone      String       @default("Europe/Berlin") /// https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+    locale        String? /// Prefered Locale of the user
+    theme         String       @default("system") /// Light, Dark or System prefered color-mode
+    createdAt     DateTime     @default(now())
+    updatedAt     DateTime     @updatedAt
+    teams         Membership[]
+
+    auth_session       Session[]
+    key                Key[]
+    VerificationCode   VerificationCode[]
+    ProjectInvitation  ProjectInvitation[]
+    PasswordResetToken PasswordResetToken[]
+    EmailChangeToken   EmailChangeToken[]
+
+    @@map(name: "users")
+}
+
+// Lucia related
+model Key {
+    id              String  @id @unique
+    hashed_password String?
+    user_id         String
+    user            User    @relation(references: [id], fields: [user_id], onDelete: Cascade)
+
+    @@index([user_id])
+    @@map(name: "keys")
+}
+
+model Session {
+    id             String @id @unique
+    user_id        String
+    active_expires BigInt
+    idle_expires   BigInt
+
+    user User @relation(references: [id], fields: [user_id], onDelete: Cascade)
+
+    @@index([user_id])
+    @@map(name: "sessions")
+}
+
+model VerificationCode {
+    id      String   @id @unique
+    user_id String
+    code    String
+    expires DateTime
+    user    User     @relation(references: [id], fields: [user_id], onDelete: Cascade)
+
+    @@map(name: "verification_code")
+}
+
+model EmailChangeToken {
+    id      String @id /// Token to send inside the reset link
+    expires BigInt /// Expiration (in milliseconds) of the token
+    user_id String
+    email   String
+    user    User   @relation(references: [id], fields: [user_id], onDelete: Cascade)
+
+    @@index([expires])
+    @@map("email_change_tokens")
+}
+
+model PasswordResetToken {
+    id      String @id /// Token to send inside the reset link
+    expires BigInt /// Expiration (in milliseconds) of the token
+    user_id String
+    user    User   @relation(references: [id], fields: [user_id], onDelete: Cascade)
+
+    @@index([expires])
+    @@map("password_reset_tokens")
+}
+
+// Application tenancy
+
+model Project {
+    id          String              @id @default(cuid())
+    name        String
+    members     Membership[]
+    createdAt   DateTime            @default(now())
+    updatedAt   DateTime            @updatedAt
+    invitations ProjectInvitation[]
+
+    @@map(name: "projects")
+}
+
+enum MembershipRole {
+    MEMBER
+    ADMIN
+    OWNER
+}
+
+model Membership {
+    id        String         @id @default(cuid())
+    projectId String
+    userId    String
+    accepted  Boolean        @default(false)
+    role      MembershipRole @default(MEMBER)
+    user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, projectId])
+    @@index([projectId])
+    @@index([userId])
+    @@map(name: "memberships")
+}
+
+model ProjectInvitation {
+    id          String         @id @default(cuid())
+    email       String
+    name        String?
+    projectId   String
+    project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    invitedById String
+    invitedBy   User           @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+    role        MembershipRole @default(MEMBER)
+    token       String         @unique
+    expires     DateTime
+    createdAt   DateTime       @default(now())
+    updatedAt   DateTime       @updatedAt
+
+    @@unique([projectId, email])
+    @@index([projectId])
+    @@map(name: "project_invitations")
+}
+
+// All other related models... below
